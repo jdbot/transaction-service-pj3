@@ -1,90 +1,95 @@
 package com.nttdata.banco.controller;
 
 import com.nttdata.banco.model.Transaction;
-import com.nttdata.banco.repository.TransactionRepository;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.Assertions;
-import org.junit.jupiter.api.BeforeEach;
+import com.nttdata.banco.service.ITransactionService;
+import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentMatchers;
-import org.mockito.Mock;
-import org.mockito.Mockito;
-import org.mockito.MockitoAnnotations;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.reactive.AutoConfigureWebTestClient;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.web.reactive.server.WebTestClient;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.Collections;
 
-import static org.junit.jupiter.api.Assertions.*;
-
+@AutoConfigureWebTestClient
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
 class TransactionControllerTest {
 
-    @Mock
-    TransactionRepository transactionRepositoryMock;
+    @Autowired
+    private WebTestClient webTestClient;
 
     @Autowired
-    TransactionController transactionController;
+    private ITransactionService transactionService;
 
-    @BeforeEach
-    void setUp() {
-        MockitoAnnotations.openMocks(this);
-        Transaction transaction = new Transaction("1","20-11-2022",100,"deposit","ClientID", "AccountID", 100, "CardID" );
-        Mono<Transaction> transactionMock = Mono.just(transaction);
-        Mockito.when(transactionRepositoryMock.findById(ArgumentMatchers.anyString()).thenReturn(transactionMock));
-        List<Transaction> transactions = new ArrayList<>();
-        transactions.add(transaction);
-        transactions.add(new Transaction("2","23-11-2022",20,"withdrawl","ClientID", "AccountID", 80, "CardID" ));
-        transactions.add(new Transaction("3","25-11-2022",100,"deposit","ClientID", "AccountID", 180, "CardID" ));
-        transactions.add(new Transaction("4","29-11-2022",150,"deposit","ClientID", "AccountID", 30, "CardID" ));
-        Flux<Transaction> fluxTransactionsMock = Flux.fromIterable(transactions);
-        Mockito.when(transactionRepositoryMock.findAll()).thenReturn(fluxTransactionsMock);
-
+    @Test
+    void register() {
+        Transaction transaction = new Transaction("638e419c35246a5c346a2f21", "2022-12-05", 10, "credit payment" , "638a5d6e5968997b3866f062", "638e33333d125635f969545a", 10, "638e2a5282a74f71937756f3");
+        webTestClient.post()
+                .uri("/transaction")
+                .body(Mono.just(transaction), Transaction.class)
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody(Transaction.class)
+                .consumeWith( response ->{
+                    Transaction tr = response.getResponseBody();
+                    Assertions.assertThat(tr.getAmount() == 10).isTrue();
+                });
     }
 
     @Test
     void findAll() {
-        Flux<Transaction> transactionResponse;
-        transactionResponse = transactionController.findAll();
-    }
-
-    @Test
-    void register() {
-    }
-
-    @Test
-    void modify() {
+        webTestClient.get()
+                .uri("/transaction")
+                .exchange()
+                .expectStatus().isOk()
+                .expectBodyList(Transaction.class)
+                .consumeWith(response ->{
+                    Flux<Transaction> transactions = Flux.fromIterable(response.getResponseBody());
+                    Assertions.assertThat(transactions.hasElements());
+                });
     }
 
     @Test
     void findById() {
-        Mono<Transaction> transactionResponse;
-        transactionResponse = transactionController.findById("1");
-        Assertions.assertEquals(100,transactionResponse.map(Transaction::getAmount));
+        Transaction transaction = transactionService.findById("638e419c35246a5c346a2f21").block();
+        webTestClient.get()
+                .uri("/transaction/{id}", Collections.singletonMap("id", transaction.getId()))
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody(Transaction.class)
+                .consumeWith( response ->{
+                    Mono<Transaction> tr = Mono.just(response.getResponseBody());
+                    Assertions.assertThat(transaction.getAmount() == 10).isTrue();
+                });
+    }
+
+    @Test
+    void modify() {
+        Transaction transaction = transactionService.findById("638e419c35246a5c346a2f21").block();
+        transaction.setTransactionDate("2022-12-06");
+        webTestClient.put()
+                .uri("/transaction")
+                .body(Mono.just(transaction), Transaction.class)
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody(Transaction.class)
+                .consumeWith( response ->{
+                    Transaction tr = response.getResponseBody();
+                    Assertions.assertThat(tr.getAmount() == 10).isTrue();
+                    Assertions.assertThat(tr.getTransactionDate().equals("2022-12-06")).isTrue();
+                });
     }
 
     @Test
     void delete() {
-    }
+        Transaction transaction = transactionService.findById("638e419c35246a5c346a2f21").block();
 
-    @Test
-    void findTransactionsByAccountId() {
-    }
-
-    @Test
-    void makeAmountAvgReport() {
-    }
-
-    @Test
-    void findTransactionsByCardId() {
-    }
-
-    @Test
-    void findCommissionByAccountId() {
-    }
-
-    @AfterEach
-    void tearDown() {
+        webTestClient.delete()
+                .uri("/transaction/{id}", Collections.singletonMap("id",transaction.getId()))
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody();
     }
 }
